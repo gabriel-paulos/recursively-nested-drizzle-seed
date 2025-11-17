@@ -123,7 +123,10 @@ test('3 cyclic tables test', async () => {
 	const modelTable1 = await db.select().from(schema.modelTable1);
 	const modelImageTable1 = await db.select().from(schema.modelImageTable1);
 	const user = await db.select().from(schema.user);
-
+	console.log('user', user);
+	console.log('modelTable1', modelTable1);
+	console.log('modelImageTable1', modelImageTable1);
+	
 	expect(modelTable1.length).toBe(10);
 	let predicate = modelTable1.every((row) => Object.values(row).every((val) => val !== undefined && val !== null));
 	expect(predicate).toBe(true);

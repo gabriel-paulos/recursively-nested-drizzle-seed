@@ -241,6 +241,10 @@ test("sequential using of 'with', soft relations test", async () => {
 	const orders = await db.select().from(schema.orders);
 	const products = await db.select().from(schema.products);
 	const suppliers = await db.select().from(schema.suppliers);
+	//console.log('customers', customers);
+	// console.log('details', details);
+	// console.log('employees', employees);
+	//console.log('orders', orders);
 
 	expect(customers.length).toBe(4);
 	expect(details.length).toBe(24);

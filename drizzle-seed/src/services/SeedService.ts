@@ -10,7 +10,9 @@ import type {
 	GeneratePossibleGeneratorsColumnType,
 	GeneratePossibleGeneratorsTableType,
 	RefinementsType,
+	RefinementWithType,
 	TableGeneratorsType,
+	tablesInOutRelations,
 } from '../types/seedService.ts';
 import type { Column, Prettify, Relation, Table } from '../types/tables.ts';
 import { generatorsMap } from './GeneratorFuncs.ts';
@@ -18,6 +20,14 @@ import type { AbstractGenerator, GenerateArray, GenerateInterval, GenerateWeight
 
 import { latestVersion } from './apiVersion.ts';
 import { equalSets, generateHashFromString } from './utils.ts';
+import { t } from 'node_modules/@electric-sql/pglite/dist/pglite-BvWM7BTQ';
+
+interface nestedWithType {
+	parentTable: string;
+	valueCount: number;
+	name: string;
+	TotalCount: number;
+}
 
 export class SeedService {
 	static readonly entityKind: string = 'SeedService';
@@ -30,6 +40,106 @@ export class SeedService {
 	//  SQLITE_MAX_VARIABLE_NUMBER, which by default equals to 999 for SQLite versions prior to 3.32.0 (2020-05-22) or 32766 for SQLite versions after 3.32.0.
 	private sqliteMaxParametersNumber = 32766;
 	private version?: number;
+
+	processNestedWithFunction = (
+		nestedWithCount: Record<string, nestedWithType> = {},
+		refinementWithTable: RefinementWithType,
+		parentTable: string | null = null,
+		tablesInOutRelations: tablesInOutRelations,
+	) : Record<string, nestedWithType> => {
+
+		for( const [key, value] of Object.entries(refinementWithTable)){
+			console.log(key, value, parentTable, 'this is key and value in processNestedWithFunction');
+			if( key === 'with'){
+
+				const nestedWithNumber = Object.keys(value).length > 0 ? Object.keys(value) : null;
+
+				if (nestedWithNumber !== null && parentTable && !tablesInOutRelations[parentTable]?.dependantTableNames.has(nestedWithNumber[0]!)){
+					console.error(`No valid relation from ${parentTable} to ${nestedWithNumber[0]}`);
+					throw new Error(`No valid relation from ${parentTable} to ${key}`);
+				}
+
+				// if with is an object, then we need to process it recursively
+				if (typeof value === 'object' && !Array.isArray(value)) {
+					const nestedWith = this.processNestedWithFunction(nestedWithCount, value, key, tablesInOutRelations);
+					Object.assign(nestedWithCount, nestedWith);
+				}
+
+			} else{
+
+				if (typeof(value) === 'number' && nestedWithCount !== undefined && parentTable !== undefined && parentTable !== null && parentTable in nestedWithCount){
+					nestedWithCount[key] = {
+						parentTable: parentTable,
+						valueCount: value,
+						name: key,
+						TotalCount: value * nestedWithCount[parentTable]!.TotalCount,
+					};
+				}
+				
+				else if (typeof(value) === 'object' && 'count' in value && parentTable !== undefined &&
+					parentTable !== null && parentTable in nestedWithCount) {
+					if (typeof(value.count) === 'number') {
+						nestedWithCount[key] = {
+							parentTable: parentTable,
+							valueCount: value.count,
+							name: key,
+							TotalCount: value.count * nestedWithCount[parentTable]!.TotalCount,
+						};
+					}
+				}
+
+			}
+
+		}
+
+		return nestedWithCount;
+	}
+	processNestedWith = (
+		nestedWithCount: Record<string, number> = {},
+		refinementWithTable: RefinementWithType,
+		parentTable: string | null = null,
+		tablesInOutRelations: tablesInOutRelations,
+	) : Record<string, number> =>{
+		console.log(refinementWithTable, 'en //////');
+		console.log(parentTable, 'parentTable');
+		for(const [key, value] of Object.entries(refinementWithTable)){
+
+			if (key === 'with') {
+				const nestedWith = Object.keys(value).length > 0 ? Object.keys(value) : null;
+				
+				if (parentTable && nestedWith !== null && !tablesInOutRelations[parentTable]?.dependantTableNames.has(nestedWith[0]!)){	
+					
+					console.error(`No valid relation from ${parentTable} to ${nestedWith[0]}`);
+					throw new Error(`No valid relation from ${parentTable} to ${key}`);
+					
+				}
+				
+				// if with is an object, then we need to process it recursively
+				if (typeof value === 'object' && !Array.isArray(value)) {
+					const nestedWith = this.processNestedWith(nestedWithCount, value, key, tablesInOutRelations);
+					Object.assign(nestedWithCount, nestedWith);
+				}
+
+			} else {
+				if (typeof(value) === 'number' && nestedWithCount!== undefined && parentTable !== undefined && parentTable !== null && parentTable in nestedWithCount){
+					console.log(nestedWithCount,parentTable, 'fgasgsggsgds');
+					nestedWithCount[key] = value * nestedWithCount[parentTable]!;
+				}
+
+				else if(typeof(value) === 'object' && 'count' in value && parentTable !== undefined &&
+			parentTable!== null && parentTable in nestedWithCount){
+					if( typeof(value.count) === 'number'){
+						nestedWithCount[key] = value.count * nestedWithCount[parentTable]!;
+					}
+					
+				}
+				
+			}
+
+		}
+		console.log(nestedWithCount, 'this is nestedWithCount after processing');
+		return nestedWithCount;
+	}
 
 	generatePossibleGenerators = (
 		connectionType: 'postgresql' | 'mysql' | 'sqlite',
@@ -93,6 +203,7 @@ export class SeedService {
 				}
 			}
 
+			//console.log('this is refinements:', refinements[table.name]);
 			if (refinements !== undefined && refinements[table.name] !== undefined) {
 				if (refinements[table.name]!.count !== undefined) {
 					tablesPossibleGenerators[i]!.count = refinements[table.name]!.count;
@@ -103,12 +214,128 @@ export class SeedService {
 						|| options?.count
 						|| this.defaultCountForTable;
 					let idx: number;
+
+					//console.log('here',refinements[table.name]!.with, tablesPossibleGenerators,'ccc',tablesInOutRelations)
+
+					/*
+					
+					1. check if fkTableName is with
+					2. go into with object - prolly as a function
+					3. inspect with for a table name, check if its has a relation to table previous to it
+					4. if not, throw an error
+					5. if yes 
+
+
+					*/
+					
+					const fkTableNames = Object.keys(refinements[table.name]!.with as {});
+					
+					// define nestedWithCount object as an [] so that you can use reduce()
+					// else you can leave it as is, but then you will need to use Object.values() to get the values
+
+
+					const nestedWithCount: Record<string, nestedWithType> = {};
+					//const nestedWithCount: { [columnName: string]: {parentTable: string, repeatedValuesCount: number, weightedCountSeed: number | null, totalCount: number }} = {};
+					
+					//console.log(fkTableNames, 'fkTableNames');
+					//console.log(tablesInOutRelations, 'cvsdgsgdfsgfgsgsgs');
+					//console.log(tablesPossibleGenerators, 'tablesPossibleGenerators');
 					for (
-						const fkTableName of Object.keys(
-							refinements[table.name]!.with as {},
-						)
-					) {
-						if (!tablesInOutRelations[table.name]?.dependantTableNames.has(fkTableName)) {
+						const fkTableName of fkTableNames	
+					) {	
+
+						if (fkTableName === 'with'){
+
+							let nestedTables = refinements[table.name]!.with!['with']!;
+							console.log(nestedTables, 'this is nestedTables');
+							
+							/*
+							while( 
+								nestedTables !== undefined && Object.keys(nestedTables).length > 0
+							){	
+								
+								const childKeys = Object.keys(nestedTables['with'] ?? {});
+
+								const curParentTable = Object.keys(nestedTables)[0]; 
+								const curChildTable = childKeys.length > 0 ? childKeys[0] : null;
+
+								console.log(curChildTable, curParentTable, 'this is curChildTable and curParentTable');	
+
+								if (Object.keys(nestedWithCount).length === 0) {
+									nestedWithCount[curParentTable!] = nestedTables[curParentTable!];
+								}
+
+								nestedWithCount[curChildTable] = Object.values(nestedWithCount).reduce((acc, cur) => acc * cur, 1)
+								// need new type
+								if (nestedTables['with'] !== undefined && Object.keys(nestedTables['with']).length > 0) {
+									nestedTables = nestedTables['with'];
+								}
+							}
+							*/
+
+
+							console.log(nestedWithCount, 'nestedWIth coutn ////');
+							//const processedNestedWith = this.processNestedWith(nestedWithCount, nestedTables, Object.keys(nestedWithCount)[0], tablesInOutRelations);
+
+							const processNestedWithFunction = this.processNestedWithFunction(nestedWithCount, nestedTables, Object.keys(nestedWithCount)[0], tablesInOutRelations);
+
+							console.log(processNestedWithFunction, 'this is test');
+
+							/// here is where you can put the code for tablesPossibleGenerators[idx]!.withFromTable[table.name] = {repeatedValuesCount: refinements[table.name]!.with![fkTableName]!,weightedCountSeed,}; you prolly want to use the new version of nestedWithCount
+
+							/*
+							for (const [nestedTableName, nestedCount] of Object.entries(processedNestedWith)){
+
+								const nested_idx = tablesPossibleGenerators.findIndex(
+									(table) => table.tableName === nestedTableName,
+								);
+
+								if (nested_idx !== -1){
+
+									tablesPossibleGenerators[nested_idx]!.withFromTable[] = nestedCount;
+
+								}
+							}
+
+							tablesPossibleGenerators[idx]!.withFromTable[table.name] = {
+								repeatedValuesCount: refinements[table.name]!.with![fkTableName]!,
+								weightedCountSeed,
+							};
+
+							*/
+							
+							for (const [nestedTableName, nestedCount] of Object.entries(processNestedWithFunction)){
+								console.log(nestedTableName, nestedCount, 'this is nestedTableName and nestedCount');
+								const nested_idx = tablesPossibleGenerators.findIndex(
+									(table) => table.tableName === nestedTableName,
+								);
+
+								if (nested_idx !== -1){
+									if (nestedCount.parentTable === tablesPossibleGenerators[0]!.tableName){
+										console.log('BEFOREEEEEEE',tablesPossibleGenerators[nested_idx]!.withFromTable, 'this is tablesPossibleGenerators[nested_idx]!.withFromTable[nestedCount.name]');
+										continue;
+										/*
+										tablesPossibleGenerators[nested_idx]!.withCount = nestedCount.valueCount;
+										tablesPossibleGenerators[nested_idx]!.withFromTable[nestedCount.name] = {repeatedValuesCount: tablesPossibleGenerators[0]!.withCount!, weightedCountSeed: undefined};
+										console.log('AFTERRRRRRR',tablesPossibleGenerators[nested_idx]!.withFromTable, 'this is tablesPossibleGenerators[nested_idx]!.withFromTable[nestedCount.name]');
+										*/
+									}
+									else{
+									tablesPossibleGenerators[nested_idx]!.withFromTable[nestedCount.parentTable] = {repeatedValuesCount: processNestedWithFunction[nestedCount.parentTable]!.valueCount, weightedCountSeed: 1};
+									tablesPossibleGenerators[nested_idx]!.withCount = nestedCount.TotalCount;
+									}
+								}
+							}
+							console.log(tablesPossibleGenerators[1], tablesPossibleGenerators[2], 'this is tablePossibleGenerators');
+
+							console.log(refinements[table.name]!.with!, 'this is refinements[table.name]!.with![fkTableName]');							
+
+
+							//processWith();
+							continue;
+						}
+
+						else if (!tablesInOutRelations[table.name]?.dependantTableNames.has(fkTableName)) {
 							const reason = tablesInOutRelations[table.name]?.selfRelation === true
 								? `"${table.name}" table has self reference`
 								: `"${fkTableName}" table doesn't have a reference to "${table.name}" table or`
@@ -122,15 +349,22 @@ export class SeedService {
 						idx = tablesPossibleGenerators.findIndex(
 							(table) => table.tableName === fkTableName,
 						);
+
 						if (idx !== -1) {
 							let newTableWithCount: number,
 								weightedCountSeed: number | undefined;
 							if (
 								typeof refinements![table.name]!.with![fkTableName] === 'number'
 							) {
+								//determines how many new entries are needed to create With Count
 								newTableWithCount = (tablesPossibleGenerators[i]!.withCount
 									|| tablesPossibleGenerators[i]!.count)!
 									* (refinements[table.name]!.with![fkTableName] as number);
+
+								//console.log('///',refinements![table.name], '///',refinements![table.name]!.with,'///',refinements![table.name]!.with![fkTableName],'///', refinements![table.name]!.with!.with!['tasks'], '/// end')
+
+
+								//console.log('this is newTableWithCount:', newTableWithCount, tablesPossibleGenerators[i]!.withCount, tablesPossibleGenerators[i]!.count, tablesPossibleGenerators[i]!, refinements[table.name]!.with![fkTableName]);
 							} else {
 								const weightedRepeatedValuesCount = refinements[table.name]!
 									.with![fkTableName] as {
@@ -152,14 +386,22 @@ export class SeedService {
 							if (
 								tablesPossibleGenerators[idx]!.withCount === undefined
 								|| newTableWithCount > tablesPossibleGenerators[idx]!.withCount!
-							) {
+							) {	
+								console.log(tablesPossibleGenerators[idx]!, newTableWithCount, 'this is tablesPossibleGenerators[idx]!.withCount');
 								tablesPossibleGenerators[idx]!.withCount = newTableWithCount;
+
 							}
+
+							nestedWithCount[fkTableName] = {parentTable: table.name, valueCount: tablesPossibleGenerators[idx]!.count!, name: fkTableName, TotalCount: newTableWithCount};
+							
+							// below is where the repeatedValuesCount is assigned to the tablePossibleGenerators, so will need to put it here
 
 							tablesPossibleGenerators[idx]!.withFromTable[table.name] = {
 								repeatedValuesCount: refinements[table.name]!.with![fkTableName]!,
 								weightedCountSeed,
 							};
+							console.log('........',tablesPossibleGenerators[idx], '.........');
+							console.log('........',tablesPossibleGenerators[0], '.........');
 						}
 					}
 				}
@@ -179,12 +421,15 @@ export class SeedService {
 					wasRefined: false,
 				};
 
+				//console.log('this is tablesPossibleGenerators:', tablesPossibleGenerators[1]);
+
 				if (
 					refinements !== undefined
 					&& refinements[table.name] !== undefined
 					&& refinements[table.name]!.columns !== undefined
 					&& refinements[table.name]!.columns[col.name] !== undefined
-				) {
+				) {	
+					//console.log('this is refinements gneerator part:', refinements[table.name]!.columns[col.name]);
 					const genObj = refinements[table.name]!.columns[col.name]!;
 
 					if (col.columnType.match(/\[\w*]/g) !== null) {
@@ -287,7 +532,7 @@ export class SeedService {
 
 				// selecting version of generator
 				columnPossibleGenerator.generator = this.selectVersionOfGenerator(columnPossibleGenerator.generator);
-
+				
 				// TODO: for now only GenerateValuesFromArray support notNull property
 				columnPossibleGenerator.generator.notNull = col.notNull;
 				columnPossibleGenerator.generator.dataType = col.dataType;
@@ -296,9 +541,10 @@ export class SeedService {
 				tablePossibleGenerators.columnsPossibleGenerators.push(
 					columnPossibleGenerator,
 				);
+				//console.log('end',tablePossibleGenerators.columnsPossibleGenerators);
 			}
 		}
-
+		
 		return tablesPossibleGenerators;
 	};
 
@@ -1214,6 +1460,8 @@ export class SeedService {
 				};
 			}
 
+			console.log(`Generating table ${table.tableName} with ${tableCount} rows...`);
+
 			// get values to generate columns with foreign key
 
 			// if table posts contains foreign key to table users, then rel.table === 'posts' and rel.refTable === 'users', because table posts has reference to table users.
@@ -1224,6 +1472,7 @@ export class SeedService {
 						&& table.withCount !== undefined
 					) {
 						tableCount = table.withCount;
+						console.log(`Table Count after generatign table: ${tableCount}`);
 					}
 
 					for (let colIdx = 0; colIdx < rel.columns.length; colIdx++) {
@@ -1288,6 +1537,9 @@ export class SeedService {
 							genObj.notNull = tableGenerators[rel.columns[colIdx]!]!.notNull;
 							genObj.weightedCountSeed = weightedCountSeed;
 							genObj.maxRepeatedValuesCount = repeatedValuesCount;
+							
+							
+							console.log(repeatedValuesCount, 'reaptedValuesCount');
 						}
 
 						if (genObj !== undefined) {
@@ -1347,7 +1599,6 @@ export class SeedService {
 				);
 			}
 		}
-
 		return tablesValues;
 	};
 

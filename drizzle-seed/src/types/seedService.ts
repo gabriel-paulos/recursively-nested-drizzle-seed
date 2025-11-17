@@ -1,3 +1,4 @@
+import { table } from 'console';
 import type { AbstractGenerator } from '../services/Generators.ts';
 import type { Prettify } from './tables.ts';
 
@@ -40,10 +41,32 @@ export type GeneratePossibleGeneratorsTableType = Prettify<{
 	columnsPossibleGenerators: GeneratePossibleGeneratorsColumnType[];
 }>;
 
+
+export type tablesInOutRelations = Prettify<{
+	
+		[tableName: string]: {
+			out: number;
+			in: number;
+			selfRelation: boolean;
+			selfRelCount: number;
+			requiredTableNames: Set<string>;
+			dependantTableNames: Set<string>;
+		}
+
+}>;
+
 export type RefinementsType = Prettify<{
 	[tableName: string]: {
 		count?: number;
 		columns: { [columnName: string]: AbstractGenerator<{}> };
-		with?: { [tableName: string]: number | { weight: number; count: number | number[] }[] };
+		//with?: RefinementWithType;
+		with?: { [tableName: string]: number | { weight: number; count: number; with?: RefinementsType | number[] }[] };
 	};
+}>;
+
+export type RefinementWithType = Prettify<{ 
+	[tableName: string]: number | { 
+		weight: number; 
+		count: number; 
+		with?: RefinementsType | number[] }[] 
 }>;

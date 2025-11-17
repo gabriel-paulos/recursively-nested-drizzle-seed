@@ -25,6 +25,42 @@ import type { DrizzleStudioObjectType, DrizzleStudioRelationType } from './types
 import type { RefinementsType } from './types/seedService.ts';
 import type { Column, Relation, RelationWithReferences, Table } from './types/tables.ts';
 
+
+type GetTableType<DB> = DB extends PgDatabase<any, any>
+  ? PgTable
+  : DB extends MySqlDatabase<any, any>
+  ? MySqlTable
+  : DB extends BaseSQLiteDatabase<any, any>
+  ? SQLiteTable
+  : never;
+
+type NestedWithValue<
+  DB,
+  SCHEMA,
+  TableName extends keyof SCHEMA = keyof SCHEMA
+> =
+  | number
+  | { weight: number; count: number | number[] }[]
+  | {
+      count?: number;
+      columns?: SCHEMA[TableName] extends GetTableType<DB>
+        ? {
+            [column in keyof SCHEMA[TableName] as SCHEMA[TableName][column] extends
+              | PgColumn
+              | MySqlColumn
+              | SQLiteColumn
+              ? column
+              : never]?: AbstractGenerator<any>;
+          }
+        : never;
+
+      with?: {
+        [RefTable in keyof SCHEMA as SCHEMA[RefTable] extends GetTableType<DB>
+          ? RefTable
+          : never]?: NestedWithValue<DB, SCHEMA, RefTable>;
+      };
+    };
+
 type InferCallbackType<
 	DB extends
 		| PgDatabase<any, any>
@@ -60,8 +96,12 @@ type InferCallbackType<
 						refTable in keyof SCHEMA as SCHEMA[refTable] extends PgTable ? refTable
 							: never
 					]?:
+					NestedWithValue<DB, SCHEMA>;
+
+					/*
 						| number
 						| { weight: number; count: number | number[] }[];
+					*/
 				};
 			};
 		}
@@ -93,8 +133,13 @@ type InferCallbackType<
 							refTable in keyof SCHEMA as SCHEMA[refTable] extends MySqlTable ? refTable
 								: never
 						]?:
+						
+						NestedWithValue<DB, SCHEMA>;
+
+						/*
 							| number
 							| { weight: number; count: number | number[] }[];
+						*/
 					};
 				};
 			}
@@ -126,8 +171,12 @@ type InferCallbackType<
 							refTable in keyof SCHEMA as SCHEMA[refTable] extends SQLiteTable ? refTable
 								: never
 						]?:
+						NestedWithValue<DB, SCHEMA>;
+
+						/*
 							| number
 							| { weight: number; count: number | number[] }[];
+						*/
 					};
 				};
 			}
@@ -1267,6 +1316,8 @@ const seedSqlite = async (
 		sqliteTables,
 		{ ...options, preserveCyclicTablesData },
 	);
+
+	console.log(tablesValues, 'tablesValues in seedSqlite');
 
 	const { filteredTablesGenerators, tablesUniqueNotNullColumn } = seedService.filterCyclicTables(
 		generatedTablesGenerators,
