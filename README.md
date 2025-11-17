@@ -26,8 +26,7 @@ graph TD;
 
 Could be populated with dummy data like this:
 
-```
-typescript
+```typescript
 
 await seed(db, {
         users: schema.users,
@@ -50,8 +49,7 @@ await seed(db, {
 
 ## Running Tests
 
-```
-typescript
+```typescript
 
 ./drizzle-orm/drizzle-seed/tests/sqlite/recursiveTables/recursiveTables.test.ts
 ```
