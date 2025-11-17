@@ -54,4 +54,8 @@ await seed(db, {
 ./drizzle-orm/drizzle-seed/tests/sqlite/recursiveTables/recursiveTables.test.ts
 ```
 
-is where the test file is 
+is where the test file is.
+
+## TODO
+
+Need to clean up my work as it is a little messy
