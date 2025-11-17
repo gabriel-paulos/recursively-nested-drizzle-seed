@@ -1,4 +1,6 @@
 
+# Populating Recursive References on top of Drizzle-Seed
+
 This is a fork of Drizzle-ORM and I wanted to add recursively nested references: for example 
 
 The following table: 
@@ -46,3 +48,12 @@ await seed(db, {
 
 ```
 
+## Running Tests
+
+```
+typescript
+
+./drizzle-orm/drizzle-seed/tests/sqlite/recursiveTables/recursiveTables.test.ts
+```
+
+is where the test file is 
