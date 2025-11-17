@@ -1,7 +1,7 @@
 
 # Populating Recursive References on top of Drizzle-Seed
 
-This is a fork of (Drizzle ORM)[https://github.com/drizzle-team/drizzle-orm] and I wanted to add recursively nested references: for example 
+This is a fork of [Drizzle ORM](https://github.com/drizzle-team/drizzle-orm) and I wanted to add recursively nested references: for example 
 
 The following table: 
 
